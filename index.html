@@ -146,18 +146,43 @@
     }
 
     async function subscribePush() {
-      try {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          showStatus('Разрешите уведомления в браузере', 'error');
-          return;
-        }
-        const reg = await navigator.serviceWorker.ready;
-        const subscription = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
-
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showStatus('Разрешите уведомления в браузере', 'error');
+      return;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    const userName = prompt('Введите ваше ФИО (как в системе дежурств):');
+    if (!userName || !userName.trim()) {
+      showStatus('Имя не указано — подписка не сохранена', 'error');
+      return;
+    }
+    const resp = await fetch(BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'savePushSubscription',
+        userName: userName.trim(),
+        subscription: JSON.stringify(subscription)
+      })
+    });
+    const result = await resp.json();
+    if (result.success) {
+      document.getElementById('pushBtn').style.display = 'none';
+      document.getElementById('pushDone').style.display = 'block';
+      showStatus('Push-уведомления успешно подключены!', 'success');
+    } else {
+      showStatus('Ошибка: ' + result.message, 'error');
+    }
+  } catch(e) {
+    showStatus('Ошибка: ' + e.message, 'error');
+  }
+}
         // Сохраняем подписку через Apps Script doPost
         const resp = await fetch(PUSH_SAVE_URL, {
           method: 'POST',
