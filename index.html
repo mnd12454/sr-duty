@@ -129,17 +129,25 @@
       }
     }
 
-    // Отправляет подписку на сервер (Apps Script doGet, метод GET —
-    // см. пояснение в initSW/subscribePush). Вынесено в отдельную
-    // функцию, чтобы вызывать и при первой подписке, и при повторном
-    // визите, когда браузер уже был подписан, но сервер мог это не
-    // сохранить (например, из-за прежнего бага с POST-редиректом).
+    // Отправляет подписку на сервер (Apps Script doGet, метод GET).
+    // Читаем реальный ответ сервера (без no-cors), чтобы показать
+    // пользователю, если его не нашли в списке "Спасатели".
+    // Возвращает { success, message } или null, если ответ прочитать
+    // не удалось (например, из-за ограничений CORS у Apps Script) —
+    // в этом случае просто считаем, что запрос "ушёл вслепую", как раньше.
     async function sendSubscriptionToBackend(subscription) {
       const pushUrl = BACKEND_URL +
         '?action=savePushSubscription' +
         '&user=' + encodeURIComponent(userName) +
         '&subscription=' + encodeURIComponent(JSON.stringify(subscription));
-      await fetch(pushUrl, { method: 'GET', mode: 'no-cors' });
+      try {
+        const response = await fetch(pushUrl, { method: 'GET' });
+        const text = await response.text();
+        return JSON.parse(text);
+      } catch (e) {
+        console.warn('Не удалось прочитать ответ сервера (возможно, CORS):', e);
+        return null;
+      }
     }
 
     async function subscribePush() {
@@ -164,9 +172,17 @@
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
 
-        await sendSubscriptionToBackend(subscription);
+        const result = await sendSubscriptionToBackend(subscription);
 
-        // С no-cors мы не получим ответ, но запрос дошёл
+        if (result && result.success === false) {
+          // Сервер явно отклонил подписку (например, имя не найдено
+          // в списке "Спасатели") — показываем причину пользователю.
+          showStatus(result.message || 'Не удалось подключить push-уведомления', 'error');
+          btn.disabled = false;
+          btn.textContent = '🔔 Подключить push-уведомления';
+          return;
+        }
+
         document.getElementById('pushBtn').style.display = 'none';
         document.getElementById('pushDone').style.display = 'block';
         showStatus('Push-уведомления успешно подключены!', 'success');
