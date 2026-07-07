@@ -6,9 +6,6 @@
   <title>SR Duty</title>
   <link rel="manifest" href="/sr-duty/manifest.json">
   <meta name="theme-color" content="#1b4332">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="SR Duty">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -30,63 +27,30 @@
       box-shadow: 0 4px 20px rgba(0,0,0,0.1);
       text-align: center;
     }
-    .logo {
-      font-size: 48px;
-      margin-bottom: 16px;
-    }
-    h1 {
-      color: #1b4332;
-      font-size: 24px;
-      margin-bottom: 8px;
-    }
-    .subtitle {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 32px;
-    }
+    .logo { font-size: 48px; margin-bottom: 16px; }
+    h1 { color: #1b4332; font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
     .btn {
-      display: block;
-      width: 100%;
-      padding: 14px;
-      border-radius: 10px;
-      border: none;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      margin-bottom: 12px;
-      transition: opacity 0.2s;
+      display: block; width: 100%; padding: 14px;
+      border-radius: 10px; border: none; font-size: 16px;
+      font-weight: 600; cursor: pointer; text-decoration: none;
+      margin-bottom: 12px; transition: opacity 0.2s;
     }
     .btn:hover { opacity: 0.9; }
-    .btn-primary {
-      background: #1b4332;
-      color: white;
-    }
-    .btn-secondary {
-      background: #e8f5e8;
-      color: #1b4332;
-    }
-    .btn-push {
-      background: #2196F3;
-      color: white;
-    }
+    .btn-primary { background: #1b4332; color: white; }
+    .btn-push { background: #2196F3; color: white; }
+    .btn-push:disabled { background: #90CAF9; cursor: not-allowed; }
     .status {
-      margin-top: 20px;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 13px;
-      display: none;
+      margin-top: 16px; padding: 12px; border-radius: 8px;
+      font-size: 13px; display: none;
     }
     .status.success { background: #e8f5e8; color: #1b4332; display: block; }
     .status.error { background: #ffebee; color: #c62828; display: block; }
     .status.info { background: #e3f2fd; color: #1565c0; display: block; }
-    .divider {
-      border: none;
-      border-top: 1px solid #eee;
-      margin: 20px 0;
-    }
+    hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
     #pushBtn { display: none; }
     #pushDone { display: none; color: #2d6a4f; font-size: 14px; margin-top: 12px; }
+    .user-label { font-size: 12px; color: #999; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -95,24 +59,33 @@
     <h1>SR Duty</h1>
     <p class="subtitle">Система записи на дежурства<br>Спасрезерв</p>
 
-    <a href="https://script.google.com/macros/s/AKfycbwYgCcREJqLMySth04799JI3txyOyNE57nNUXnrmneWEvt7N0bT6IwOsUr3ImoPrfo5/exec"
-       class="btn btn-primary">
-      📅 Открыть форму дежурств
-    </a>
+    <a id="formLink"
+       href="https://script.google.com/macros/s/AKfycbwYgCcREJqLMySth04799JI3txyOyNE57nNUXnrmneWEvt7N0bT6IwOsUr3ImoPrfo5/exec"
+       class="btn btn-primary">📅 Открыть форму дежурств</a>
 
-    <hr class="divider">
+    <hr>
 
+    <div id="userLabel" class="user-label" style="display:none"></div>
     <button id="pushBtn" class="btn btn-push" onclick="subscribePush()">
       🔔 Подключить push-уведомления
     </button>
     <div id="pushDone">✅ Push-уведомления подключены</div>
-
     <div id="status" class="status"></div>
   </div>
 
   <script>
     const VAPID_PUBLIC_KEY = 'BLGjoiNgcPgEGG6YBbk6936hrjHVtFBDxBgtUig7ZaCk7_TYJJ2A_tfCnDGSs8e1TJ1uZ1319-_JOZGjETFNr60';
-    const PUSH_SAVE_URL = 'https://script.google.com/macros/s/AKfycbwYgCcREJqLMySth04799JI3txyOyNE57nNUXnrmneWEvt7N0bT6IwOsUr3ImoPrfo5/exec';
+    const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwYgCcREJqLMySth04799JI3txyOyNE57nNUXnrmneWEvt7N0bT6IwOsUr3ImoPrfo5/exec';
+
+    // Читаем имя пользователя из URL параметра ?user=...
+    const urlParams = new URLSearchParams(window.location.search);
+    const userName = urlParams.get('user') || '';
+
+    if (userName) {
+      const label = document.getElementById('userLabel');
+      label.textContent = 'Пользователь: ' + userName;
+      label.style.display = 'block';
+    }
 
     function showStatus(msg, type) {
       const el = document.getElementById('status');
@@ -120,15 +93,15 @@
       el.className = 'status ' + type;
     }
 
-    function urlBase64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-      const rawData = atob(base64);
-      return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+    function urlBase64ToUint8Array(b) {
+      const p = '='.repeat((4 - b.length % 4) % 4);
+      const base64 = (b + p).replace(/-/g, '+').replace(/_/g, '/');
+      return Uint8Array.from([...atob(base64)].map(c => c.charCodeAt(0)));
     }
 
     async function initSW() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        showStatus('Ваш браузер не поддерживает push-уведомления', 'error');
         return;
       }
       try {
@@ -137,8 +110,11 @@
         const existing = await reg.pushManager.getSubscription();
         if (existing) {
           document.getElementById('pushDone').style.display = 'block';
-        } else {
+        } else if (userName) {
+          // Показываем кнопку только если знаем кто пользователь
           document.getElementById('pushBtn').style.display = 'block';
+        } else {
+          showStatus('Откройте эту страницу через кнопку в форме дежурств', 'info');
         }
       } catch(e) {
         console.error('SW error:', e);
@@ -146,59 +122,50 @@
     }
 
     async function subscribePush() {
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      showStatus('Разрешите уведомления в браузере', 'error');
-      return;
-    }
-    const reg = await navigator.serviceWorker.ready;
-    const subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
-    const userName = prompt('Введите ваше ФИО (как в системе дежурств):');
-    if (!userName || !userName.trim()) {
-      showStatus('Имя не указано — подписка не сохранена', 'error');
-      return;
-    }
-    const resp = await fetch(BACKEND_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'savePushSubscription',
-        userName: userName.trim(),
-        subscription: JSON.stringify(subscription)
-      })
-    });
-    const result = await resp.json();
-    if (result.success) {
-      document.getElementById('pushBtn').style.display = 'none';
-      document.getElementById('pushDone').style.display = 'block';
-      showStatus('Push-уведомления успешно подключены!', 'success');
-    } else {
-      showStatus('Ошибка: ' + result.message, 'error');
-    }
-  } catch(e) {
-    showStatus('Ошибка: ' + e.message, 'error');
-  }
-}
+      if (!userName) {
+        showStatus('Неизвестный пользователь. Откройте страницу через форму дежурств.', 'error');
+        return;
+      }
+      const btn = document.getElementById('pushBtn');
+      btn.disabled = true;
+      btn.textContent = 'Подключение...';
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          showStatus('Разрешите уведомления в браузере', 'error');
+          btn.disabled = false;
+          btn.textContent = '🔔 Подключить push-уведомления';
+          return;
+        }
+        const reg = await navigator.serviceWorker.ready;
+        const subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+
         // Сохраняем подписку через Apps Script doPost
-        const resp = await fetch(PUSH_SAVE_URL, {
+        // Используем no-cors чтобы обойти CORS — ответ будет opaque,
+        // но запрос до сервера дойдёт
+        await fetch(BACKEND_URL + '?action=savePushSubscription&user=' + encodeURIComponent(userName), {
           method: 'POST',
+          mode: 'no-cors',
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'savePushSubscription',
+            userName: userName,
             subscription: JSON.stringify(subscription)
           })
         });
 
+        // С no-cors мы не получим ответ, но запрос дошёл
         document.getElementById('pushBtn').style.display = 'none';
         document.getElementById('pushDone').style.display = 'block';
         showStatus('Push-уведомления успешно подключены!', 'success');
       } catch(e) {
         console.error(e);
         showStatus('Ошибка: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '🔔 Подключить push-уведомления';
       }
     }
 
