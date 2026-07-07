@@ -110,6 +110,14 @@
         const existing = await reg.pushManager.getSubscription();
         if (existing) {
           document.getElementById('pushDone').style.display = 'block';
+          // Переотправляем существующую подписку на сервер на всякий
+          // случай — если в прошлый раз браузер её создал, а сервер
+          // из-за старого бага (POST → GET при редиректе) не сохранил.
+          if (userName) {
+            sendSubscriptionToBackend(existing).catch(function(e) {
+              console.error('Resend subscription error:', e);
+            });
+          }
         } else if (userName) {
           // Показываем кнопку только если знаем кто пользователь
           document.getElementById('pushBtn').style.display = 'block';
@@ -119,6 +127,19 @@
       } catch(e) {
         console.error('SW error:', e);
       }
+    }
+
+    // Отправляет подписку на сервер (Apps Script doGet, метод GET —
+    // см. пояснение в initSW/subscribePush). Вынесено в отдельную
+    // функцию, чтобы вызывать и при первой подписке, и при повторном
+    // визите, когда браузер уже был подписан, но сервер мог это не
+    // сохранить (например, из-за прежнего бага с POST-редиректом).
+    async function sendSubscriptionToBackend(subscription) {
+      const pushUrl = BACKEND_URL +
+        '?action=savePushSubscription' +
+        '&user=' + encodeURIComponent(userName) +
+        '&subscription=' + encodeURIComponent(JSON.stringify(subscription));
+      await fetch(pushUrl, { method: 'GET', mode: 'no-cors' });
     }
 
     async function subscribePush() {
@@ -143,19 +164,7 @@
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
 
-        // Сохраняем подписку через Apps Script doGet (GET, не POST!)
-        // Важно: ссылки вида script.google.com/.../exec всегда отвечают
-        // редиректом (302) на script.googleusercontent.com. Браузер по
-        // стандарту Fetch при редиректе ПОСТ-запроса меняет метод на GET
-        // и обрезает тело — из-за этого doPost никогда не вызывался и
-        // подписка не сохранялась. GET при редиректе метод не меняет,
-        // поэтому все данные передаём через query-параметры.
-        const pushUrl = BACKEND_URL +
-          '?action=savePushSubscription' +
-          '&user=' + encodeURIComponent(userName) +
-          '&subscription=' + encodeURIComponent(JSON.stringify(subscription));
-
-        await fetch(pushUrl, { method: 'GET', mode: 'no-cors' });
+        await sendSubscriptionToBackend(subscription);
 
         // С no-cors мы не получим ответ, но запрос дошёл
         document.getElementById('pushBtn').style.display = 'none';
