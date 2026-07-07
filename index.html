@@ -143,19 +143,19 @@
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
 
-        // Сохраняем подписку через Apps Script doPost
-        // Используем no-cors чтобы обойти CORS — ответ будет opaque,
-        // но запрос до сервера дойдёт
-        await fetch(BACKEND_URL + '?action=savePushSubscription&user=' + encodeURIComponent(userName), {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            action: 'savePushSubscription',
-            userName: userName,
-            subscription: JSON.stringify(subscription)
-          })
-        });
+        // Сохраняем подписку через Apps Script doGet (GET, не POST!)
+        // Важно: ссылки вида script.google.com/.../exec всегда отвечают
+        // редиректом (302) на script.googleusercontent.com. Браузер по
+        // стандарту Fetch при редиректе ПОСТ-запроса меняет метод на GET
+        // и обрезает тело — из-за этого doPost никогда не вызывался и
+        // подписка не сохранялась. GET при редиректе метод не меняет,
+        // поэтому все данные передаём через query-параметры.
+        const pushUrl = BACKEND_URL +
+          '?action=savePushSubscription' +
+          '&user=' + encodeURIComponent(userName) +
+          '&subscription=' + encodeURIComponent(JSON.stringify(subscription));
+
+        await fetch(pushUrl, { method: 'GET', mode: 'no-cors' });
 
         // С no-cors мы не получим ответ, но запрос дошёл
         document.getElementById('pushBtn').style.display = 'none';
