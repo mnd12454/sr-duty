@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SR Duty</title>
+  <link rel="manifest" href="/sr-duty/manifest.json">
+  <meta name="theme-color" content="#1b4332">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="SR Duty">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px 24px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .logo {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      color: #1b4332;
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      margin-bottom: 12px;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-primary {
+      background: #1b4332;
+      color: white;
+    }
+    .btn-secondary {
+      background: #e8f5e8;
+      color: #1b4332;
+    }
+    .btn-push {
+      background: #2196F3;
+      color: white;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+    }
+    .status.success { background: #e8f5e8; color: #1b4332; display: block; }
+    .status.error { background: #ffebee; color: #c62828; display: block; }
+    .status.info { background: #e3f2fd; color: #1565c0; display: block; }
+    .divider {
+      border: none;
+      border-top: 1px solid #eee;
+      margin: 20px 0;
+    }
+    #pushBtn { display: none; }
+    #pushDone { display: none; color: #2d6a4f; font-size: 14px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🏕️</div>
+    <h1>SR Duty</h1>
+    <p class="subtitle">Система записи на дежурства<br>Спасрезерв</p>
+
+    <a href="https://script.google.com/macros/s/AKfycbwYgCcREJqLMySth04799JI3txyOyNE57nNUXnrmneWEvt7N0bT6IwOsUr3ImoPrfo5/exec"
+       class="btn btn-primary">
+      📅 Открыть форму дежурств
+    </a>
+
+    <hr class="divider">
+
+    <button id="pushBtn" class="btn btn-push" onclick="subscribePush()">
+      🔔 Подключить push-уведомления
+    </button>
+    <div id="pushDone">✅ Push-уведомления подключены</div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    const VAPID_PUBLIC_KEY = 'BLGjoiNgcPgEGG6YBbk6936hrjHVtFBDxBgtUig7ZaCk7_TYJJ2A_tfCnDGSs8e1TJ1uZ1319-_JOZGjETFNr60';
+    const PUSH_SAVE_URL = 'https://script.google.com/macros/s/AKfycbwYgCcREJqLMySth04799JI3txyOyNE57nNUXnrmneWEvt7N0bT6IwOsUr3ImoPrfo5/exec';
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status ' + type;
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+    }
+
+    async function initSW() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        return;
+      }
+      try {
+        await navigator.serviceWorker.register('/sr-duty/sw.js');
+        const reg = await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) {
+          document.getElementById('pushDone').style.display = 'block';
+        } else {
+          document.getElementById('pushBtn').style.display = 'block';
+        }
+      } catch(e) {
+        console.error('SW error:', e);
+      }
+    }
+
+    async function subscribePush() {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          showStatus('Разрешите уведомления в браузере', 'error');
+          return;
+        }
+        const reg = await navigator.serviceWorker.ready;
+        const subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+
+        // Сохраняем подписку через Apps Script doPost
+        const resp = await fetch(PUSH_SAVE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'savePushSubscription',
+            subscription: JSON.stringify(subscription)
+          })
+        });
+
+        document.getElementById('pushBtn').style.display = 'none';
+        document.getElementById('pushDone').style.display = 'block';
+        showStatus('Push-уведомления успешно подключены!', 'success');
+      } catch(e) {
+        console.error(e);
+        showStatus('Ошибка: ' + e.message, 'error');
+      }
+    }
+
+    initSW();
+  </script>
+</body>
+</html>
