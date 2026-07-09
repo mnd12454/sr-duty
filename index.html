@@ -114,7 +114,15 @@
           // случай — если в прошлый раз браузер её создал, а сервер
           // из-за старого бага (POST → GET при редиректе) не сохранил.
           if (userName) {
-            sendSubscriptionToBackend(existing).catch(function(e) {
+            sendSubscriptionToBackend(existing).then(function(result) {
+              if (result && result.success === false) {
+                // Браузер уже подписан, но сервер отклонил (например,
+                // имя не нашлось в "Спасатели") — сообщаем честно,
+                // а не просто показываем "подключено".
+                document.getElementById('pushDone').style.display = 'none';
+                showStatus(result.message || 'Не удалось сохранить подписку на сервере', 'error');
+              }
+            }).catch(function(e) {
               console.error('Resend subscription error:', e);
             });
           }
